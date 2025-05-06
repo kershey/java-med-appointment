@@ -131,7 +131,7 @@ export default function AdminDashboard() {
           </CardContent>
           <CardFooter className="pt-0">
             <Button variant="ghost" size="sm" className="text-xs" asChild>
-              <Link href="/dashboard/user-management">
+              <Link href="/dashboard/admin/users">
                 Manage Users
                 <ArrowRight className="ml-1 h-3 w-3" />
               </Link>
@@ -204,7 +204,7 @@ export default function AdminDashboard() {
               </Link>
             </Button>
             <Button variant="outline" size="sm" asChild>
-              <Link href="/dashboard/admin/staff">
+              <Link href="/dashboard/admin/users?filter=Staff">
                 <Users className="mr-2 h-4 w-4" />
                 Manage Staff
               </Link>

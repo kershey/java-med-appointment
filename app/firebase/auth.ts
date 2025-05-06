@@ -6,7 +6,14 @@ import {
   sendEmailVerification,
   updateProfile,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  doc,
+  setDoc,
+  getDoc,
+  serverTimestamp,
+  collection,
+  getDocs,
+} from 'firebase/firestore';
 import { auth, db } from './config';
 import { UserRole, UserStatus } from '../types';
 
@@ -209,6 +216,24 @@ export const updateUserStatus = async (uid: string, newStatus: UserStatus) => {
     return { success: true };
   } catch (error) {
     console.error('[updateUserStatus] Error updating status:', error);
+    return { success: false, error };
+  }
+};
+
+// Fetch all users - for admin use only
+export const getAllUsers = async () => {
+  try {
+    const usersRef = collection(db, 'users');
+    const snapshot = await getDocs(usersRef);
+
+    const users = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return { success: true, users };
+  } catch (error) {
+    console.error('[getAllUsers] Error fetching users:', error);
     return { success: false, error };
   }
 };
