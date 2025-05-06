@@ -1,22 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
+  HeartPulse,
+  User,
+  Stethoscope,
+  ArrowRight,
+  Users,
+  ShieldCheck,
+} from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -25,216 +17,87 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
-import { registerUser } from '@/app/firebase/auth';
-
-// Define form schema
-const formSchema = z
-  .object({
-    firstName: z
-      .string()
-      .min(2, { message: 'First name must be at least 2 characters' }),
-    lastName: z
-      .string()
-      .min(2, { message: 'Last name must be at least 2 characters' }),
-    email: z.string().email({ message: 'Please enter a valid email address' }),
-    password: z
-      .string()
-      .min(6, { message: 'Password must be at least 6 characters' }),
-    confirmPassword: z
-      .string()
-      .min(6, { message: 'Please confirm your password' }),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ['confirmPassword'],
-  });
-
-export default function RegisterPage() {
-  const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  // Initialize form
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      firstName: '',
-      lastName: '',
-      email: '',
-      password: '',
-      confirmPassword: '',
-    },
-  });
-
-  // Handle form submission
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
-    setIsLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const result = await registerUser(
-        values.email,
-        values.password,
-        values.firstName,
-        values.lastName
-      );
-
-      if (result.success) {
-        setSuccess(
-          'Registration successful! Please check your email for verification.'
-        );
-        setTimeout(() => {
-          router.push('/auth/login');
-        }, 3000);
-      } else {
-        setError('Registration failed. Please try again.');
-      }
-    } catch (err: unknown) {
-      const error = err as { message?: string };
-      if (error.message?.includes('email-already-in-use')) {
-        setError('Email already in use. Please try a different email address.');
-      } else {
-        setError('An error occurred. Please try again later.');
-        console.error(err);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+export default function RegisterOptionsPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">
-            Create an account
-          </CardTitle>
-          <CardDescription className="text-center">
-            Enter your information to create an account
+    <div className="max-w-md w-full">
+      <Card className="border shadow-lg rounded-xl overflow-hidden">
+        {/* Brand header */}
+        <div className="bg-primary/5 p-6 flex justify-center border-b">
+          <HeartPulse className="h-12 w-12 text-primary" />
+        </div>
+
+        <CardHeader className="text-center pt-6 pb-2">
+          <CardTitle className="text-2xl">Create Your Account</CardTitle>
+          <CardDescription className="text-muted-foreground">
+            Please select your account type to register
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {error && (
-            <div className="bg-red-50 text-red-500 px-4 py-2 rounded-md mb-4">
-              {error}
-            </div>
-          )}
-          {success && (
-            <div className="bg-green-50 text-green-500 px-4 py-2 rounded-md mb-4">
-              {success}
-            </div>
-          )}
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="firstName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>First Name</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="John"
-                          {...field}
-                          disabled={isLoading}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="lastName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Last Name</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Doe"
-                          {...field}
-                          disabled={isLoading}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+
+        <CardContent className="space-y-3 p-6">
+          <Button
+            variant="outline"
+            className="w-full justify-start h-14 text-base hover:bg-primary/5 hover:border-primary/20 group"
+            asChild
+          >
+            <Link href="/auth/register/patient">
+              <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center mr-3 group-hover:bg-primary/20 transition-colors">
+                <User className="size-5 text-primary" />
               </div>
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="name@example.com"
-                        type="email"
-                        {...field}
-                        disabled={isLoading}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="••••••••"
-                        {...field}
-                        disabled={isLoading}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="confirmPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Confirm Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="••••••••"
-                        {...field}
-                        disabled={isLoading}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Creating account...' : 'Create Account'}
-              </Button>
-            </form>
-          </Form>
+              <div className="text-left">
+                <p className="font-medium">Patient</p>
+                <p className="text-xs text-muted-foreground">
+                  Book appointments & access health records
+                </p>
+              </div>
+              <ArrowRight className="ml-auto h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+            </Link>
+          </Button>
+
+          <Button
+            variant="outline"
+            className="w-full justify-start h-14 text-base hover:bg-accent/5 hover:border-accent/20 group"
+            asChild
+          >
+            <Link href="/auth/register/doctor">
+              <div className="size-10 rounded-full bg-accent/10 flex items-center justify-center mr-3 group-hover:bg-accent/20 transition-colors">
+                <Stethoscope className="size-5 text-accent" />
+              </div>
+              <div className="text-left">
+                <p className="font-medium">Doctor</p>
+                <p className="text-xs text-muted-foreground">
+                  Register as a healthcare provider
+                </p>
+              </div>
+              <ArrowRight className="ml-auto h-5 w-5 text-muted-foreground group-hover:text-accent transition-colors" />
+            </Link>
+          </Button>
         </CardContent>
-        <CardFooter className="flex justify-center">
-          <div className="text-sm text-gray-600">
+
+        <div className="px-6 pb-2">
+          <div className="bg-muted/30 p-4 rounded-lg border border-border/60 text-center">
+            <div className="flex justify-center space-x-2 mb-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Staff and Administrator accounts can only be created by existing
+              administrators.
+            </p>
+          </div>
+        </div>
+
+        <CardFooter className="pb-6 flex justify-center border-t pt-6 bg-secondary/5">
+          <p className="text-sm text-muted-foreground">
             Already have an account?{' '}
             <Link
               href="/auth/login"
-              className="font-medium text-blue-600 hover:text-blue-500"
+              className="text-primary hover:underline font-medium"
             >
-              Sign In
+              Sign in now
             </Link>
-          </div>
+          </p>
         </CardFooter>
       </Card>
     </div>

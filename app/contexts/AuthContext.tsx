@@ -7,36 +7,18 @@ import {
   useState,
   ReactNode,
 } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth } from '../firebase/config';
-import { doc, getDoc, Timestamp } from 'firebase/firestore';
-import { db } from '../firebase/config';
-
-// Define user type that extends Firebase User with our custom fields
-export type UserRole = 'Patient' | 'Doctor' | 'Staff' | 'Admin';
-
-export interface UserData {
-  uid: string;
-  email: string | null;
-  firstName: string;
-  middleName: string;
-  lastName: string;
-  gender: string;
-  birthDate: Timestamp | null;
-  address: string;
-  contactNumber: string;
-  userType: UserRole;
-  status: 'Active' | 'Disabled' | 'RedTag';
-  profileImage: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { auth } from '@/app/firebase/config';
+import { getCurrentUserData } from '@/app/firebase/auth';
+import { User, UserRole } from '@/app/types';
 
 // Auth context interface
 interface AuthContextType {
-  user: User | null;
-  userData: UserData | null;
+  user: FirebaseUser | null;
+  userData: Partial<User> | null;
   loading: boolean;
+  userRole: UserRole | null;
+  accessDeniedReason: string | null; // New state for access denial reason
 }
 
 // Create context with default values
@@ -44,53 +26,117 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   userData: null,
   loading: true,
+  userRole: null,
+  accessDeniedReason: null, // Default access denial reason
 });
 
-// Auth provider props
-interface AuthProviderProps {
-  children: ReactNode;
-}
-
 // Auth provider component
-export const AuthProvider = ({ children }: AuthProviderProps) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [userData, setUserData] = useState<UserData | null>(null);
-  const [loading, setLoading] = useState(true);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [userData, setUserData] = useState<Partial<User> | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [accessDeniedReason, setAccessDeniedReason] = useState<string | null>(
+    null
+  ); // New state
 
   useEffect(() => {
-    // Listen for auth state changes
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
+    // Setup firebase auth state listener
+    console.log('[AuthContext] Setting up onAuthStateChanged listener.');
+    const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
+      console.log('[AuthContext] onAuthStateChanged triggered.');
+      if (authUser) {
+        console.log('[AuthContext] authUser found:', {
+          uid: authUser.uid,
+          emailVerified: authUser.emailVerified,
+        });
+        console.log(
+          '[AuthContext] Fetching Firestore data for UID:',
+          authUser.uid
+        );
+        const firestoreResult = await getCurrentUserData(authUser.uid);
+        console.log('[AuthContext] Firestore result:', firestoreResult);
 
-      if (user) {
-        // Get additional user data from Firestore
-        try {
-          const docRef = doc(db, 'users', user.uid);
-          const docSnap = await getDoc(docRef);
+        if (firestoreResult.success && firestoreResult.userData) {
+          const fsData = firestoreResult.userData as User;
+          console.log('[AuthContext] Firestore data retrieved:', fsData);
 
-          if (docSnap.exists()) {
-            setUserData(docSnap.data() as UserData);
+          if (!authUser.emailVerified) {
+            console.log('[AuthContext] Access denied: Email not verified.');
+            setUser(null);
+            setUserData(null);
+            setUserRole(null);
+            setAccessDeniedReason(
+              'Email not verified. Please check your inbox.'
+            );
+          } else if (fsData.status !== 'Active') {
+            console.log(
+              `[AuthContext] Access denied: Status is ${fsData.status}, not Active.`
+            );
+            setUser(null);
+            setUserData(null);
+            setUserRole(null);
+            setAccessDeniedReason(
+              `Account is ${fsData.status}. Please contact support.`
+            );
+          } else {
+            // User is verified and active
+            console.log(
+              '[AuthContext] Access granted: User verified and active.'
+            );
+            setUser(authUser);
+            setUserData(fsData);
+            setUserRole(fsData.userType as UserRole);
+            setAccessDeniedReason(null);
           }
-        } catch (error) {
-          console.error('Error fetching user data:', error);
+        } else {
+          // Failed to get Firestore data, treat as unauthenticated
+          console.log(
+            '[AuthContext] Access denied: Failed to load Firestore user data.'
+          );
+          setUser(null);
+          setUserData(null);
+          setUserRole(null);
+          setAccessDeniedReason('Failed to load user data.');
         }
       } else {
+        // No Firebase authUser
+        console.log(
+          '[AuthContext] No authUser found (logged out or initial state).'
+        );
+        setUser(null);
         setUserData(null);
+        setUserRole(null);
+        setAccessDeniedReason(null);
       }
-
+      console.log('[AuthContext] Setting loading to false.');
       setLoading(false);
     });
 
     // Cleanup subscription
-    return () => unsubscribe();
+    return () => {
+      console.log('[AuthContext] Unsubscribing from onAuthStateChanged.');
+      unsubscribe();
+    };
   }, []);
 
+  // Provide auth context value
+  const value = {
+    user,
+    userData,
+    loading,
+    userRole,
+    accessDeniedReason, // Provide new state
+  };
+
   return (
-    <AuthContext.Provider value={{ user, userData, loading }}>
+    <AuthContext.Provider value={value}>
+      {/* Render children only after loading is complete,
+          DashboardLayout will handle redirect if user is null */}
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
-// Custom hook to use auth context
+// Custom hook to use the auth context
 export const useAuth = () => useContext(AuthContext);

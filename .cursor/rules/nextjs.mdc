@@ -1,6 +1,6 @@
 ---
 description: 
-globs: 
+globs: **/*
 alwaysApply: false
 ---
 # Ideal System Prompt for Next.js and React Development

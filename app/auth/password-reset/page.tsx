@@ -55,21 +55,24 @@ export default function PasswordResetPage() {
       const result = await resetPassword(values.email);
 
       if (result.success) {
-        setSuccess('Password reset email sent. Please check your inbox.');
+        setSuccess(
+          'Password reset email sent! Please check your inbox and follow the instructions.'
+        );
         form.reset();
       } else {
-        setError('Failed to send password reset email. Please try again.');
+        setError('Failed to send reset email. Please try again.');
       }
-    } catch (err: unknown) {
-      const error = err as { message?: string };
-      if (error.message?.includes('user-not-found')) {
-        setError('No account found with this email address.');
-      } else {
-        setError('An error occurred. Please try again later.');
-        console.error(err);
-      }
+    } catch (err) {
+      setError('An error occurred. Please try again later.');
+      console.error(err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      form.handleSubmit(onSubmit)();
     }
   };
 
@@ -97,7 +100,11 @@ export default function PasswordResetPage() {
             </div>
           )}
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-4"
+              onKeyDown={handleKeyDown}
+            >
               <FormField
                 control={form.control}
                 name="email"
@@ -108,6 +115,8 @@ export default function PasswordResetPage() {
                       <Input
                         placeholder="name@example.com"
                         type="email"
+                        autoComplete="email"
+                        aria-label="Email"
                         {...field}
                         disabled={isLoading}
                       />
@@ -117,7 +126,7 @@ export default function PasswordResetPage() {
                 )}
               />
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Sending...' : 'Send Reset Link'}
+                {isLoading ? 'Sending reset link...' : 'Send Reset Link'}
               </Button>
             </form>
           </Form>
@@ -128,6 +137,7 @@ export default function PasswordResetPage() {
             <Link
               href="/auth/login"
               className="font-medium text-blue-600 hover:text-blue-500"
+              tabIndex={0}
             >
               Back to login
             </Link>

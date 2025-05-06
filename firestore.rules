@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow authenticated users to read and create their own user documents
+    match /users/{userId} {
+      // Allow anyone to CREATE a user document IF:
+      // 1. The document ID being created matches the UID in the data.
+      // 2. The data being written includes the essential fields from registration.
+      // 3. The status is correctly set for the user type (Inactive for regular users, Active for admins).
+      allow create: if request.resource.data.uid == userId &&
+                       request.resource.data.email is string &&
+                       request.resource.data.fullName is string &&
+                       request.resource.data.userType is string &&
+                       ((request.resource.data.userType == 'Admin' && request.resource.data.status == 'Active') || 
+                        (request.resource.data.userType != 'Admin' && request.resource.data.status == 'Inactive')) &&
+                       request.resource.data.createdAt == request.time; // Ensure createdAt is set by server
+
+      // Allow authenticated users to READ their own profile.
+      // Allow Admins/Staff to READ any user profile (adjust if needed).
+      allow read: if request.auth != null && (request.auth.uid == userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userType in ['Admin', 'Staff']);
+
+      // Allow authenticated users to UPDATE their own profile,
+      // but prevent them from changing their UID, email, userType, or status directly.
+      // EXCEPT for Admin activation where they can change their status from Inactive to Active
+      allow update: if request.auth != null && request.auth.uid == userId && (
+                       // Regular profile updates (no status change)
+                       (request.resource.data.uid == request.auth.uid &&
+                       request.resource.data.email == resource.data.email &&
+                       request.resource.data.userType == resource.data.userType &&
+                       request.resource.data.status == resource.data.status)
+                       
+                       || 
+                       
+                       // Special case for Admin activation
+                       (request.resource.data.uid == request.auth.uid &&
+                       request.resource.data.email == resource.data.email &&
+                       request.resource.data.userType == resource.data.userType &&
+                       request.resource.data.userType == 'Admin' &&
+                       resource.data.status == 'Inactive' &&
+                       request.resource.data.status == 'Active')
+                    );
+
+       // Disallow direct deletion for now (can be done by Admins or Cloud Functions if needed)
+      allow delete: if false;
+    }
+    
+    // Rules for other collections
+    match /doctors/{doctorId} {
+      // Allow CREATE for a doctor profile IF:
+      // 1. The document ID matches the UID in the data.
+      // 2. The user document for this UID exists and has userType 'Doctor'.
+      // 3. The initial profileStatus is 'Pending'.
+      allow create: if request.resource.data.uid == doctorId &&
+                       exists(/databases/$(database)/documents/users/$(doctorId)) &&
+                       get(/databases/$(database)/documents/users/$(doctorId)).data.userType == 'Doctor' &&
+                       request.resource.data.profileStatus == 'Pending' &&
+                       request.resource.data.createdAt == request.time;
+
+      // Allow authenticated users to READ doctor profiles.
+      allow read: if request.auth != null;
+
+      // Allow the doctor themselves OR an Admin to UPDATE the profile.
+      // Prevent changing the UID.
+      allow update: if request.auth != null &&
+                       (request.auth.uid == doctorId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userType == 'Admin') &&
+                       request.resource.data.uid == doctorId;
+
+      // Disallow direct deletion for now
+      allow delete: if false;
+    }
+    
+    // Add rules for other collections as needed
+  }
+} 

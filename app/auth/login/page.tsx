@@ -1,22 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
+  HeartPulse,
+  User,
+  Stethoscope,
+  Users,
+  ShieldCheck,
+} from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -25,130 +16,108 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
-import { loginUser } from '@/app/firebase/auth';
-
-// Define form schema
-const formSchema = z.object({
-  email: z.string().email({ message: 'Please enter a valid email address' }),
-  password: z
-    .string()
-    .min(6, { message: 'Password must be at least 6 characters' }),
-});
-
-export default function LoginPage() {
-  const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Initialize form
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      email: '',
-      password: '',
-    },
-  });
-
-  // Handle form submission
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const result = await loginUser(values.email, values.password);
-
-      if (result.success) {
-        router.push('/dashboard');
-      } else {
-        setError('Invalid email or password. Please try again.');
-      }
-    } catch (err) {
-      setError('An error occurred. Please try again later.');
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+export default function LoginOptionsPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">
-            Login
-          </CardTitle>
-          <CardDescription className="text-center">
-            Enter your credentials to access your account
+    <div className="max-w-md w-full">
+      <Card className="border shadow-lg rounded-xl overflow-hidden">
+        {/* Brand header */}
+        <div className="bg-primary/5 p-6 flex justify-center border-b">
+          <HeartPulse className="h-12 w-12 text-primary" />
+        </div>
+
+        <CardHeader className="text-center pt-6 pb-2">
+          <CardTitle className="text-2xl">Welcome to Java Medical</CardTitle>
+          <CardDescription className="text-muted-foreground">
+            Please select your account type to continue
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {error && (
-            <div className="bg-red-50 text-red-500 px-4 py-2 rounded-md mb-4">
-              {error}
-            </div>
-          )}
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="name@example.com"
-                        {...field}
-                        disabled={isLoading}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="••••••••"
-                        {...field}
-                        disabled={isLoading}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="text-right">
-                <Link
-                  href="/auth/password-reset"
-                  className="text-sm text-blue-600 hover:text-blue-500"
-                >
-                  Forgot password?
-                </Link>
+
+        <CardContent className="space-y-3 p-6">
+          <Button
+            variant="outline"
+            className="w-full justify-start h-14 text-base hover:bg-primary/5 hover:border-primary/20 group"
+            asChild
+          >
+            <Link href="/auth/login/patient">
+              <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center mr-3 group-hover:bg-primary/20 transition-colors">
+                <User className="size-5 text-primary" />
               </div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Signing in...' : 'Sign In'}
-              </Button>
-            </form>
-          </Form>
+              <div className="text-left">
+                <p className="font-medium">Patient</p>
+                <p className="text-xs text-muted-foreground">
+                  Book appointments & access health records
+                </p>
+              </div>
+            </Link>
+          </Button>
+
+          <Button
+            variant="outline"
+            className="w-full justify-start h-14 text-base hover:bg-accent/5 hover:border-accent/20 group"
+            asChild
+          >
+            <Link href="/auth/login/doctor">
+              <div className="size-10 rounded-full bg-accent/10 flex items-center justify-center mr-3 group-hover:bg-accent/20 transition-colors">
+                <Stethoscope className="size-5 text-accent" />
+              </div>
+              <div className="text-left">
+                <p className="font-medium">Doctor</p>
+                <p className="text-xs text-muted-foreground">
+                  Manage appointments & patient care
+                </p>
+              </div>
+            </Link>
+          </Button>
+
+          <Button
+            variant="outline"
+            className="w-full justify-start h-14 text-base hover:bg-secondary-foreground/5 hover:border-secondary-foreground/20 group"
+            asChild
+          >
+            <Link href="/auth/login/staff">
+              <div className="size-10 rounded-full bg-secondary-foreground/10 flex items-center justify-center mr-3 group-hover:bg-secondary-foreground/20 transition-colors">
+                <Users className="size-5 text-secondary-foreground" />
+              </div>
+              <div className="text-left">
+                <p className="font-medium">Staff</p>
+                <p className="text-xs text-muted-foreground">
+                  Coordinate patient services & scheduling
+                </p>
+              </div>
+            </Link>
+          </Button>
+
+          <Button
+            variant="outline"
+            className="w-full justify-start h-14 text-base hover:bg-foreground/5 hover:border-foreground/20 group"
+            asChild
+          >
+            <Link href="/auth/login/admin">
+              <div className="size-10 rounded-full bg-foreground/10 flex items-center justify-center mr-3 group-hover:bg-foreground/20 transition-colors">
+                <ShieldCheck className="size-5 text-foreground" />
+              </div>
+              <div className="text-left">
+                <p className="font-medium">Administrator</p>
+                <p className="text-xs text-muted-foreground">
+                  Manage system settings & user access
+                </p>
+              </div>
+            </Link>
+          </Button>
         </CardContent>
-        <CardFooter className="flex justify-center">
-          <div className="text-sm text-gray-600">
-            Don&apos;t have an account?{' '}
+
+        <CardFooter className="pb-6 flex justify-center border-t pt-6 bg-secondary/5">
+          <p className="text-sm text-muted-foreground">
+            Don't have an account?{' '}
             <Link
               href="/auth/register"
-              className="font-medium text-blue-600 hover:text-blue-500"
+              className="text-primary hover:underline font-medium"
             >
-              Register
+              Create one now
             </Link>
-          </div>
+          </p>
         </CardFooter>
       </Card>
     </div>
