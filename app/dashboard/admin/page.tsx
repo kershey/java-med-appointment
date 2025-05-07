@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -22,10 +22,24 @@ import {
   BarChart3,
   BadgeCheck,
 } from 'lucide-react';
+import {
+  collection,
+  getCountFromServer,
+  query,
+  where,
+} from 'firebase/firestore';
+import { db } from '@/app/firebase/config';
 
 export default function AdminDashboard() {
   const { user, userData, userRole, loading } = useAuth();
   const router = useRouter();
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    activeDoctors: 0,
+    todayAppointments: 0,
+    pendingApplications: 0,
+  });
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   // Protect the route
   useEffect(() => {
@@ -33,6 +47,73 @@ export default function AdminDashboard() {
       router.push('/auth/login/admin');
     }
   }, [user, userRole, loading, router]);
+
+  // Fetch dashboard statistics
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!user || userRole !== 'Admin') return;
+
+      try {
+        setIsLoadingStats(true);
+
+        // Count total users
+        const usersSnapshot = await getCountFromServer(collection(db, 'users'));
+        const totalUsers = usersSnapshot.data().count;
+
+        // Count active doctors
+        const activeDoctorsQuery = query(
+          collection(db, 'doctors'),
+          where('profileStatus', '==', 'Active'),
+          where('availability', '==', true)
+        );
+        const activeDoctorsSnapshot = await getCountFromServer(
+          activeDoctorsQuery
+        );
+        const activeDoctors = activeDoctorsSnapshot.data().count;
+
+        // Count today's appointments
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const todayAppointmentsQuery = query(
+          collection(db, 'appointments'),
+          where('datetime', '>=', today),
+          where('datetime', '<', tomorrow)
+        );
+        const todayAppointmentsSnapshot = await getCountFromServer(
+          todayAppointmentsQuery
+        );
+        const todayAppointments = todayAppointmentsSnapshot.data().count;
+
+        // Count pending doctor applications
+        const pendingDoctorsQuery = query(
+          collection(db, 'doctors'),
+          where('profileStatus', '==', 'Pending')
+        );
+        const pendingDoctorsSnapshot = await getCountFromServer(
+          pendingDoctorsQuery
+        );
+        const pendingApplications = pendingDoctorsSnapshot.data().count;
+
+        setStats({
+          totalUsers,
+          activeDoctors,
+          todayAppointments,
+          pendingApplications,
+        });
+      } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+      } finally {
+        setIsLoadingStats(false);
+      }
+    };
+
+    if (user && userRole === 'Admin') {
+      fetchStats();
+    }
+  }, [user, userRole]);
 
   if (loading) {
     return (
@@ -92,23 +173,43 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="bg-background rounded-lg p-3 border">
                 <p className="text-sm text-muted-foreground">Total Users</p>
-                <p className="text-lg font-medium">1</p>
+                {isLoadingStats ? (
+                  <div className="h-6 w-8 bg-muted animate-pulse rounded mt-1"></div>
+                ) : (
+                  <p className="text-lg font-medium">{stats.totalUsers}</p>
+                )}
               </div>
               <div className="bg-background rounded-lg p-3 border">
                 <p className="text-sm text-muted-foreground">Active Doctors</p>
-                <p className="text-lg font-medium">0</p>
+                {isLoadingStats ? (
+                  <div className="h-6 w-8 bg-muted animate-pulse rounded mt-1"></div>
+                ) : (
+                  <p className="text-lg font-medium">{stats.activeDoctors}</p>
+                )}
               </div>
               <div className="bg-background rounded-lg p-3 border">
                 <p className="text-sm text-muted-foreground">
-                  Appointments Today
+                  Today&apos;s Appointments
                 </p>
-                <p className="text-lg font-medium">0</p>
+                {isLoadingStats ? (
+                  <div className="h-6 w-8 bg-muted animate-pulse rounded mt-1"></div>
+                ) : (
+                  <p className="text-lg font-medium">
+                    {stats.todayAppointments}
+                  </p>
+                )}
               </div>
               <div className="bg-background rounded-lg p-3 border">
                 <p className="text-sm text-muted-foreground">
                   Pending Applications
                 </p>
-                <p className="text-lg font-medium">0</p>
+                {isLoadingStats ? (
+                  <div className="h-6 w-8 bg-muted animate-pulse rounded mt-1"></div>
+                ) : (
+                  <p className="text-lg font-medium">
+                    {stats.pendingApplications}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -125,7 +226,11 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline justify-between">
-              <div className="text-3xl font-bold">1</div>
+              {isLoadingStats ? (
+                <div className="h-8 w-12 bg-muted animate-pulse rounded"></div>
+              ) : (
+                <div className="text-3xl font-bold">{stats.totalUsers}</div>
+              )}
               <Users className="h-5 w-5 text-primary" />
             </div>
           </CardContent>
@@ -147,13 +252,19 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline justify-between">
-              <div className="text-3xl font-bold">0</div>
+              {isLoadingStats ? (
+                <div className="h-8 w-12 bg-muted animate-pulse rounded"></div>
+              ) : (
+                <div className="text-3xl font-bold">
+                  {stats.pendingApplications}
+                </div>
+              )}
               <Shield className="h-5 w-5 text-accent" />
             </div>
           </CardContent>
           <CardFooter className="pt-0">
             <Button variant="ghost" size="sm" className="text-xs" asChild>
-              <Link href="/dashboard/doctor-management">
+              <Link href="/dashboard/admin/doctors?filter=Pending">
                 Review Applications
                 <ArrowRight className="ml-1 h-3 w-3" />
               </Link>
@@ -164,19 +275,25 @@ export default function AdminDashboard() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-medium text-muted-foreground">
-              System Reports
+              Today&apos;s Appointments
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline justify-between">
-              <div className="text-3xl font-bold">4</div>
+              {isLoadingStats ? (
+                <div className="h-8 w-12 bg-muted animate-pulse rounded"></div>
+              ) : (
+                <div className="text-3xl font-bold">
+                  {stats.todayAppointments}
+                </div>
+              )}
               <BarChart3 className="h-5 w-5 text-primary" />
             </div>
           </CardContent>
           <CardFooter className="pt-0">
             <Button variant="ghost" size="sm" className="text-xs" asChild>
-              <Link href="/dashboard/admin/reports">
-                View Reports
+              <Link href="/dashboard/admin/appointments">
+                View Appointments
                 <ArrowRight className="ml-1 h-3 w-3" />
               </Link>
             </Button>

@@ -7,7 +7,6 @@ import {
   getDoc,
   addDoc,
   updateDoc,
-  deleteDoc,
   orderBy,
   serverTimestamp,
   Timestamp,
@@ -28,6 +27,12 @@ export interface UIAppointment {
   status: AppointmentStatus;
   patientId?: string;
   doctorId?: string;
+  // Additional UI-specific properties
+  virtualAvailable?: boolean;
+  teleHealthUrl?: string;
+  aiPreDiagnosis?: boolean;
+  preparationSteps?: string[];
+  estimatedWaitTime?: string;
 }
 
 // Get appointments for a patient
@@ -412,6 +417,61 @@ export const getPastPatientAppointments = async (
     return { success: true, appointments: uiAppointments };
   } catch (error) {
     console.error('Error getting past appointments:', error);
+    return { success: false, error };
+  }
+};
+
+export const getAppointmentsWithDetails = async (
+  userId: string,
+  userType: 'Patient' | 'Doctor'
+) => {
+  try {
+    // Get appointments based on user type
+    const field = userType === 'Patient' ? 'patientId' : 'doctorId';
+    const q = query(
+      collection(db, 'appointments'),
+      where(field, '==', userId),
+      orderBy('datetime', 'desc')
+    );
+
+    const querySnapshot = await getDocs(q);
+    const appointments: Appointment[] = [];
+
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      appointments.push({
+        id: doc.id,
+        patientId: data.patientId,
+        doctorId: data.doctorId,
+        datetime: data.datetime.toDate(),
+        symptoms: data.symptoms,
+        queueNumber: data.queueNumber,
+        status: data.status,
+        paymentStatus: data.paymentStatus,
+        paymentMethod: data.paymentMethod,
+        paymentReference: data.paymentReference,
+        type: data.type,
+        cancelReason: data.cancelReason,
+        createdAt: data.createdAt.toDate(),
+        updatedAt: data.updatedAt.toDate(),
+      });
+    });
+
+    // Transform appointments to UI format with doctor and patient info
+    const uiAppointments: UIAppointment[] = [];
+
+    for (const appointment of appointments) {
+      try {
+        const uiAppointment = await transformAppointmentForUI(appointment);
+        uiAppointments.push(uiAppointment);
+      } catch (error) {
+        console.error('Error transforming appointment:', error);
+      }
+    }
+
+    return { success: true, appointments: uiAppointments };
+  } catch (error) {
+    console.error('Error getting appointments with details:', error);
     return { success: false, error };
   }
 };

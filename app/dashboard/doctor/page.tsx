@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -20,10 +20,25 @@ import {
   ClipboardList,
   Clock,
 } from 'lucide-react';
+import {
+  collection,
+  query,
+  where,
+  getCountFromServer,
+  getDocs,
+} from 'firebase/firestore';
+import { db } from '@/app/firebase/config';
 
 export default function DoctorDashboard() {
   const { user, userData, userRole, loading } = useAuth();
   const router = useRouter();
+  const [stats, setStats] = useState({
+    todayAppointments: 0,
+    activePatients: 0,
+    queuePosition: 0,
+    hasSetAvailability: false,
+  });
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   // Protect the route
   useEffect(() => {
@@ -31,6 +46,76 @@ export default function DoctorDashboard() {
       router.push('/auth/login/doctor');
     }
   }, [user, userRole, loading, router]);
+
+  // Fetch dashboard statistics
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!user || userRole !== 'Doctor') return;
+
+      try {
+        setIsLoadingStats(true);
+
+        // Count today's appointments for this doctor
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const todayAppointmentsQuery = query(
+          collection(db, 'appointments'),
+          where('doctorId', '==', user.uid),
+          where('datetime', '>=', today),
+          where('datetime', '<', tomorrow),
+          where('status', '==', 'Approved')
+        );
+        const todayAppointmentsSnapshot = await getCountFromServer(
+          todayAppointmentsQuery
+        );
+        const todayAppointments = todayAppointmentsSnapshot.data().count;
+
+        // Count active patients (unique patients with approved appointments)
+        const activePatientQuery = query(
+          collection(db, 'appointments'),
+          where('doctorId', '==', user.uid),
+          where('status', 'in', ['Approved', 'Completed'])
+        );
+        const activePatientSnapshot = await getDocs(activePatientQuery);
+        const uniquePatientIds = new Set();
+        activePatientSnapshot.docs.forEach((doc) => {
+          uniquePatientIds.add(doc.data().patientId);
+        });
+        const activePatients = uniquePatientIds.size;
+
+        // Check if doctor has set their availability
+        const doctorScheduleQuery = query(
+          collection(db, 'doctors'),
+          where('uid', '==', user.uid)
+        );
+        const doctorSnapshot = await getDocs(doctorScheduleQuery);
+        let hasSetAvailability = false;
+        if (!doctorSnapshot.empty) {
+          const doctorData = doctorSnapshot.docs[0].data();
+          hasSetAvailability =
+            Object.keys(doctorData.schedule || {}).length > 0;
+        }
+
+        setStats({
+          todayAppointments,
+          activePatients,
+          queuePosition: 0, // Would need real-time queue data
+          hasSetAvailability,
+        });
+      } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+      } finally {
+        setIsLoadingStats(false);
+      }
+    };
+
+    if (user && userRole === 'Doctor') {
+      fetchStats();
+    }
+  }, [user, userRole]);
 
   if (loading) {
     return (
@@ -67,9 +152,9 @@ export default function DoctorDashboard() {
               </Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/profile">
+              <Link href="/dashboard/doctor/profile">
                 <User className="mr-2 h-4 w-4" />
-                My Profile
+                Edit Profile
               </Link>
             </Button>
           </div>
@@ -86,7 +171,13 @@ export default function DoctorDashboard() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline justify-between">
-              <div className="text-3xl font-bold">0</div>
+              {isLoadingStats ? (
+                <div className="h-8 w-12 bg-muted animate-pulse rounded"></div>
+              ) : (
+                <div className="text-3xl font-bold">
+                  {stats.todayAppointments}
+                </div>
+              )}
               <CalendarDays className="h-5 w-5 text-primary" />
             </div>
           </CardContent>
@@ -108,7 +199,11 @@ export default function DoctorDashboard() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline justify-between">
-              <div className="text-3xl font-bold">0</div>
+              {isLoadingStats ? (
+                <div className="h-8 w-12 bg-muted animate-pulse rounded"></div>
+              ) : (
+                <div className="text-3xl font-bold">{stats.activePatients}</div>
+              )}
               <Users className="h-5 w-5 text-accent" />
             </div>
           </CardContent>
@@ -130,7 +225,13 @@ export default function DoctorDashboard() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline justify-between">
-              <div className="text-3xl font-bold">0</div>
+              {isLoadingStats ? (
+                <div className="h-8 w-12 bg-muted animate-pulse rounded"></div>
+              ) : (
+                <div className="text-3xl font-bold">
+                  {stats.queuePosition || 'N/A'}
+                </div>
+              )}
               <Clock className="h-5 w-5 text-primary" />
             </div>
           </CardContent>
@@ -152,9 +253,18 @@ export default function DoctorDashboard() {
             <CardTitle>Recent Patients</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">
-              No recent patient records found.
-            </p>
+            {isLoadingStats ? (
+              <div className="h-5 w-48 bg-muted animate-pulse rounded mt-1"></div>
+            ) : stats.activePatients > 0 ? (
+              <p className="text-muted-foreground">
+                You have {stats.activePatients} active patient
+                {stats.activePatients !== 1 ? 's' : ''}.
+              </p>
+            ) : (
+              <p className="text-muted-foreground">
+                No recent patient records found.
+              </p>
+            )}
           </CardContent>
           <CardFooter>
             <Button variant="outline" size="sm" asChild>
@@ -171,13 +281,22 @@ export default function DoctorDashboard() {
             <CardTitle>Your Schedule</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">
-              You have not set your availability yet.
-            </p>
+            {isLoadingStats ? (
+              <div className="h-5 w-48 bg-muted animate-pulse rounded mt-1"></div>
+            ) : stats.hasSetAvailability ? (
+              <p className="text-muted-foreground">
+                Your schedule is set. You have {stats.todayAppointments}{' '}
+                appointment{stats.todayAppointments !== 1 ? 's' : ''} today.
+              </p>
+            ) : (
+              <p className="text-muted-foreground">
+                You have not set your availability yet.
+              </p>
+            )}
           </CardContent>
           <CardFooter>
             <Button variant="outline" size="sm" asChild>
-              <Link href="/doctor/availability">
+              <Link href="/dashboard/doctor/profile">
                 <ClipboardList className="mr-2 h-4 w-4" />
                 Update Availability
               </Link>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { AppointmentCard } from '@/app/components/AppointmentCard';
 import { Button } from '@/components/ui/button';
@@ -23,65 +23,93 @@ import {
   User,
   FileHeart,
 } from 'lucide-react';
+import {
+  getUpcomingPatientAppointments,
+  getPastPatientAppointments,
+  cancelAppointment,
+  UIAppointment,
+} from '@/app/firebase/appointments';
 
 export default function PatientDashboardPage() {
-  const { userData } = useAuth();
+  const { user, userData } = useAuth();
   const [showUpcoming, setShowUpcoming] = useState(true);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<
+    UIAppointment[]
+  >([]);
+  const [pastAppointments, setPastAppointments] = useState<UIAppointment[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mock data for upcoming appointments
-  const upcomingAppointments = [
-    {
-      id: '1',
-      doctorName: 'Dr. Sarah Johnson',
-      doctorSpecialty: 'Cardiology',
-      date: new Date(2023, 5, 25, 10, 0),
-      time: '10:00 AM - 10:30 AM',
-      location: 'Main Clinic, Room 204',
-      status: 'confirmed',
-    },
-    {
-      id: '2',
-      doctorName: 'Dr. Michael Chen',
-      doctorSpecialty: 'General Medicine',
-      date: new Date(2023, 6, 12, 14, 30),
-      time: '2:30 PM - 3:00 PM',
-      location: 'North Branch, Room 105',
-      status: 'pending',
-    },
-  ] as const;
+  // Fetch appointment data
+  useEffect(() => {
+    const fetchAppointments = async () => {
+      if (!user) return;
 
-  // Mock data for past appointments
-  const pastAppointments = [
-    {
-      id: '3',
-      doctorName: 'Dr. James Wilson',
-      doctorSpecialty: 'Dermatology',
-      date: new Date(2023, 4, 15, 9, 0),
-      time: '9:00 AM - 9:30 AM',
-      location: 'Main Clinic, Room 302',
-      status: 'completed',
-    },
-    {
-      id: '4',
-      doctorName: 'Dr. Lisa Thompson',
-      doctorSpecialty: 'Neurology',
-      date: new Date(2023, 3, 28, 13, 0),
-      time: '1:00 PM - 2:00 PM',
-      location: 'Main Clinic, Room 118',
-      status: 'completed',
-    },
-  ] as const;
+      try {
+        setLoading(true);
+
+        // Fetch upcoming appointments
+        const upcomingResult = await getUpcomingPatientAppointments(user.uid);
+        if (upcomingResult.success && upcomingResult.appointments) {
+          setUpcomingAppointments(upcomingResult.appointments);
+        }
+
+        // Fetch past appointments
+        const pastResult = await getPastPatientAppointments(user.uid);
+        if (pastResult.success && pastResult.appointments) {
+          setPastAppointments(pastResult.appointments);
+        }
+      } catch (error) {
+        console.error('Error fetching appointments:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAppointments();
+  }, [user]);
 
   // Handle appointment cancellation
-  const handleCancelAppointment = (id: string) => {
-    console.log(`Cancelling appointment with ID: ${id}`);
-    // Implementation would connect to backend cancellation service
+  const handleCancelAppointment = async (id: string) => {
+    try {
+      const result = await cancelAppointment(id, 'Cancelled by patient');
+
+      if (result.success) {
+        // Refresh the appointment data
+        if (user) {
+          const upcomingResult = await getUpcomingPatientAppointments(user.uid);
+          if (upcomingResult.success && upcomingResult.appointments) {
+            setUpcomingAppointments(upcomingResult.appointments);
+          }
+        }
+      } else {
+        console.error('Error cancelling appointment:', result.error);
+      }
+    } catch (error) {
+      console.error('Error in handleCancelAppointment:', error);
+    }
   };
 
   // Handle appointment rescheduling
   const handleRescheduleAppointment = (id: string) => {
     console.log(`Rescheduling appointment with ID: ${id}`);
     // Implementation would navigate to rescheduling page
+  };
+
+  const transformStatusForCard = (
+    status: string
+  ): 'confirmed' | 'pending' | 'canceled' | 'completed' => {
+    switch (status.toLowerCase()) {
+      case 'confirmed':
+        return 'confirmed';
+      case 'pending':
+        return 'pending';
+      case 'canceled':
+        return 'canceled';
+      case 'completed':
+        return 'completed';
+      default:
+        return 'pending';
+    }
   };
 
   return (
@@ -243,26 +271,61 @@ export default function PatientDashboardPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {showUpcoming
-            ? upcomingAppointments.map((appointment) => (
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="size-16 border-t-4 border-primary border-solid rounded-full animate-spin mx-auto"></div>
+            <p className="ml-4">Loading appointments...</p>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {showUpcoming ? (
+              upcomingAppointments.length === 0 ? (
+                <div className="md:col-span-2 text-center p-8 border border-dashed rounded-lg">
+                  <p className="text-muted-foreground">
+                    You don&apos;t have any upcoming appointments.
+                  </p>
+                  <Button asChild className="mt-4">
+                    <Link href="/appointments/new">
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      Book New Appointment
+                    </Link>
+                  </Button>
+                </div>
+              ) : (
+                upcomingAppointments.map((appointment) => (
+                  <AppointmentCard
+                    key={appointment.id}
+                    appointment={{
+                      ...appointment,
+                      status: transformStatusForCard(appointment.status),
+                    }}
+                    onCancel={() => handleCancelAppointment(appointment.id)}
+                    onReschedule={() =>
+                      handleRescheduleAppointment(appointment.id)
+                    }
+                  />
+                ))
+              )
+            ) : pastAppointments.length === 0 ? (
+              <div className="md:col-span-2 text-center p-8 border border-dashed rounded-lg">
+                <p className="text-muted-foreground">
+                  You don&apos;t have any past appointments.
+                </p>
+              </div>
+            ) : (
+              pastAppointments.map((appointment) => (
                 <AppointmentCard
                   key={appointment.id}
-                  appointment={appointment}
-                  onCancel={() => handleCancelAppointment(appointment.id)}
-                  onReschedule={() =>
-                    handleRescheduleAppointment(appointment.id)
-                  }
+                  appointment={{
+                    ...appointment,
+                    status: transformStatusForCard(appointment.status),
+                  }}
+                  isPast={true}
                 />
               ))
-            : pastAppointments.map((appointment) => (
-                <AppointmentCard
-                  key={appointment.id}
-                  appointment={appointment}
-                  isPast
-                />
-              ))}
-        </div>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );

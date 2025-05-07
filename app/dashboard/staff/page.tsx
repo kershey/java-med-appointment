@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -20,10 +20,23 @@ import {
   ClipboardCheck,
   CreditCard,
 } from 'lucide-react';
+import {
+  collection,
+  query,
+  where,
+  getCountFromServer,
+} from 'firebase/firestore';
+import { db } from '@/app/firebase/config';
 
 export default function StaffDashboard() {
   const { user, userData, userRole, loading } = useAuth();
   const router = useRouter();
+  const [stats, setStats] = useState({
+    pendingAppointments: 0,
+    todayQueue: 0,
+    recentPayments: 0,
+  });
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   // Protect the route
   useEffect(() => {
@@ -38,6 +51,70 @@ export default function StaffDashboard() {
       router.push('/auth/login/staff');
     }
   }, [user, userRole, loading, router]);
+
+  // Fetch dashboard statistics
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!user || userRole !== 'Staff') return;
+
+      try {
+        setIsLoadingStats(true);
+
+        // Count pending appointments
+        const pendingAppointmentsQuery = query(
+          collection(db, 'appointments'),
+          where('status', '==', 'Pending')
+        );
+        const pendingAppointmentsSnapshot = await getCountFromServer(
+          pendingAppointmentsQuery
+        );
+        const pendingAppointments = pendingAppointmentsSnapshot.data().count;
+
+        // Count today's queue
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const todayQueueQuery = query(
+          collection(db, 'appointments'),
+          where('datetime', '>=', today),
+          where('datetime', '<', tomorrow),
+          where('status', '==', 'Approved')
+        );
+        const todayQueueSnapshot = await getCountFromServer(todayQueueQuery);
+        const todayQueue = todayQueueSnapshot.data().count;
+
+        // Count recent payments (last 7 days)
+        const lastWeek = new Date();
+        lastWeek.setDate(lastWeek.getDate() - 7);
+
+        const recentPaymentsQuery = query(
+          collection(db, 'appointments'),
+          where('paymentStatus', '==', 'Paid'),
+          where('updatedAt', '>=', lastWeek)
+        );
+        const recentPaymentsSnapshot = await getCountFromServer(
+          recentPaymentsQuery
+        );
+        const recentPayments = recentPaymentsSnapshot.data().count;
+
+        setStats({
+          pendingAppointments,
+          todayQueue,
+          recentPayments,
+        });
+      } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+      } finally {
+        setIsLoadingStats(false);
+      }
+    };
+
+    if (user && userRole === 'Staff') {
+      fetchStats();
+    }
+  }, [user, userRole]);
 
   if (loading) {
     return (
@@ -93,7 +170,13 @@ export default function StaffDashboard() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline justify-between">
-              <div className="text-3xl font-bold">0</div>
+              {isLoadingStats ? (
+                <div className="h-8 w-12 bg-muted animate-pulse rounded"></div>
+              ) : (
+                <div className="text-3xl font-bold">
+                  {stats.pendingAppointments}
+                </div>
+              )}
               <CalendarDays className="h-5 w-5 text-primary" />
             </div>
           </CardContent>
@@ -115,7 +198,11 @@ export default function StaffDashboard() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline justify-between">
-              <div className="text-3xl font-bold">0</div>
+              {isLoadingStats ? (
+                <div className="h-8 w-12 bg-muted animate-pulse rounded"></div>
+              ) : (
+                <div className="text-3xl font-bold">{stats.todayQueue}</div>
+              )}
               <Users className="h-5 w-5 text-accent" />
             </div>
           </CardContent>
@@ -137,7 +224,11 @@ export default function StaffDashboard() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline justify-between">
-              <div className="text-3xl font-bold">0</div>
+              {isLoadingStats ? (
+                <div className="h-8 w-12 bg-muted animate-pulse rounded"></div>
+              ) : (
+                <div className="text-3xl font-bold">{stats.recentPayments}</div>
+              )}
               <CreditCard className="h-5 w-5 text-primary" />
             </div>
           </CardContent>
@@ -188,6 +279,26 @@ export default function StaffDashboard() {
               <Link href="/clinic/operations">
                 <ClipboardCheck className="mr-2 h-4 w-4" />
                 Manage Operations
+              </Link>
+            </Button>
+          </CardFooter>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>User Management</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">
+              Access and manage user records, update information, and handle
+              registrations.
+            </p>
+          </CardContent>
+          <CardFooter>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/dashboard/staff/users">
+                <Users className="mr-2 h-4 w-4" />
+                User Management
               </Link>
             </Button>
           </CardFooter>

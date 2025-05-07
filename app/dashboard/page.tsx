@@ -1,35 +1,55 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { logoutUser } from '@/app/firebase/auth';
 import {
-  CalendarDays,
-  FileText,
-  Settings,
+  getUpcomingPatientAppointments,
+  UIAppointment,
+} from '@/app/firebase/appointments';
+import {
+  DoctorWithUserInfo,
+  getAllActiveDoctors,
+} from '@/app/firebase/doctors';
+import {
   Clock,
-  CheckCircle2,
-  AlertCircle,
-  ChevronRight,
   BellRing,
+  User,
   CalendarClock,
   MessageSquare,
-  User,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { format } from 'date-fns';
+
+interface Notification {
+  id: number;
+  title: string;
+  message: string;
+  time: string;
+  type: string;
+}
 
 export default function DashboardPage() {
   const { user, userData, loading } = useAuth();
   const router = useRouter();
+  const [upcomingAppointments, setUpcomingAppointments] = useState<
+    UIAppointment[]
+  >([]);
+  const [recentNotifications, setRecentNotifications] = useState<
+    Notification[]
+  >([]);
+  const [doctors, setDoctors] = useState<DoctorWithUserInfo[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -37,12 +57,68 @@ export default function DashboardPage() {
     }
   }, [user, loading, router]);
 
+  // Fetch dashboard data
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!user) return;
+
+      try {
+        setLoadingData(true);
+
+        // Fetch upcoming appointments
+        const appointmentsResult = await getUpcomingPatientAppointments(
+          user.uid,
+          2
+        );
+        if (appointmentsResult.success && appointmentsResult.appointments) {
+          setUpcomingAppointments(appointmentsResult.appointments);
+        }
+
+        // If there are fewer than 2 upcoming appointments, fetch top doctors
+        if (
+          !appointmentsResult.appointments ||
+          appointmentsResult.appointments.length < 2
+        ) {
+          const doctorsResult = await getAllActiveDoctors();
+          if (doctorsResult.success && doctorsResult.doctors) {
+            setDoctors(doctorsResult.doctors.slice(0, 3));
+          }
+        }
+
+        // For notifications, we'll keep a simple mock version for now
+        // This could be expanded with a real notifications system in the future
+        setRecentNotifications([
+          {
+            id: 1,
+            title: 'Appointment Reminder',
+            message: 'Your next appointment is coming up soon',
+            time: '2 hours ago',
+            type: 'reminder',
+          },
+          {
+            id: 2,
+            title: 'New Message',
+            message: 'You have a new message from your doctor',
+            time: '1 day ago',
+            type: 'info',
+          },
+        ]);
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+      } finally {
+        setLoadingData(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [user]);
+
   const handleLogout = async () => {
     await logoutUser();
     router.push('/auth/login');
   };
 
-  if (loading) {
+  if (loading || loadingData) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="text-center">
@@ -58,42 +134,6 @@ export default function DashboardPage() {
   if (!user || !userData) {
     return null; // Redirect handled by useEffect
   }
-
-  // Mock data for the dashboard
-  const upcomingAppointments = [
-    {
-      id: 1,
-      doctor: 'Dr. Sarah Johnson',
-      specialty: 'Cardiology',
-      date: 'Tomorrow, 10:00 AM',
-      status: 'confirmed',
-    },
-    {
-      id: 2,
-      doctor: 'Dr. Michael Chen',
-      specialty: 'General Medicine',
-      date: 'Friday, May 12, 2:30 PM',
-      status: 'pending',
-    },
-  ];
-
-  const recentNotifications = [
-    {
-      id: 1,
-      title: 'Appointment Reminder',
-      message:
-        'Your appointment with Dr. Sarah Johnson is tomorrow at 10:00 AM',
-      time: '2 hours ago',
-      type: 'reminder',
-    },
-    {
-      id: 2,
-      title: 'Prescription Ready',
-      message: 'Your prescription for Amoxicillin is ready for pickup',
-      time: '1 day ago',
-      type: 'info',
-    },
-  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -134,7 +174,7 @@ export default function DashboardPage() {
                 Welcome back, {userData.firstName} {userData.lastName}
               </CardTitle>
               <CardDescription>
-                Here's what's happening with your health today.
+                Here&apos;s what&apos;s happening with your health today.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -162,7 +202,7 @@ export default function DashboardPage() {
 
               <div className="flex items-center gap-3 bg-accent/10 p-4 rounded-lg">
                 <div className="size-10 rounded-lg bg-accent/20 flex items-center justify-center">
-                  <FileText className="size-5 text-accent" />
+                  <MessageSquare className="size-5 text-accent" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Documents</p>
@@ -202,38 +242,24 @@ export default function DashboardPage() {
                         className="flex items-center justify-between border-b border-border/50 pb-4 last:border-0"
                       >
                         <div className="flex items-center gap-4">
-                          <div
-                            className={`size-10 rounded-full flex items-center justify-center ${
-                              appointment.status === 'confirmed'
-                                ? 'bg-accent/10 text-accent'
-                                : 'bg-primary/10 text-primary'
-                            }`}
-                          >
-                            {appointment.status === 'confirmed' ? (
-                              <CheckCircle2 className="size-5" />
-                            ) : (
-                              <Clock className="size-5" />
-                            )}
+                          <div className="size-10 rounded-full flex items-center justify-center bg-primary/10 text-primary">
+                            <CheckCircle2 className="size-5" />
                           </div>
                           <div>
-                            <p className="font-medium">{appointment.doctor}</p>
+                            <p className="font-medium">
+                              {appointment.doctorName}
+                            </p>
                             <p className="text-sm text-muted-foreground">
-                              {appointment.specialty}
+                              {appointment.doctorSpecialty}
                             </p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="font-medium">{appointment.date}</p>
-                          <p
-                            className={`text-sm ${
-                              appointment.status === 'confirmed'
-                                ? 'text-accent'
-                                : 'text-primary'
-                            }`}
-                          >
-                            {appointment.status === 'confirmed'
-                              ? 'Confirmed'
-                              : 'Pending'}
+                          <p className="font-medium">
+                            {format(appointment.date, 'MMM d, h:mm a')}
+                          </p>
+                          <p className="text-sm text-accent">
+                            {appointment.status}
                           </p>
                         </div>
                       </div>
@@ -245,154 +271,126 @@ export default function DashboardPage() {
                       No upcoming appointments
                     </p>
                     <Button
-                      onClick={() => router.push('/appointments')}
+                      onClick={() => router.push('/appointments/new')}
                       variant="secondary"
                       className="mt-4"
                     >
-                      Book Appointment
+                      Book an Appointment
                     </Button>
                   </div>
                 )}
               </CardContent>
-              <CardFooter className="border-t bg-secondary/10 flex justify-center">
-                <Button
-                  variant="ghost"
-                  className="w-full"
-                  onClick={() => router.push('/appointments')}
-                >
-                  <CalendarDays className="mr-2 h-4 w-4" />
-                  Schedule Appointment
-                </Button>
-              </CardFooter>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Medical Records</CardTitle>
-                <CardDescription>
-                  Your latest tests and medical documents
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between hover:bg-muted/50 p-2 rounded-md cursor-pointer transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="size-8 rounded-md bg-primary/10 flex items-center justify-center">
-                      <FileText className="size-4 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium">Blood Test Results</p>
-                      <p className="text-xs text-muted-foreground">
-                        Uploaded: Apr 15, 2023
-                      </p>
-                    </div>
+            {/* Recommended Doctors Section - show if fewer than 2 appointments */}
+            {upcomingAppointments.length < 2 && doctors.length > 0 && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Recommended Doctors</CardTitle>
+                    <CardDescription>
+                      Top-rated specialists available for consultation
+                    </CardDescription>
                   </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-
-                <div className="flex items-center justify-between hover:bg-muted/50 p-2 rounded-md cursor-pointer transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="size-8 rounded-md bg-accent/10 flex items-center justify-center">
-                      <FileText className="size-4 text-accent" />
-                    </div>
-                    <div>
-                      <p className="font-medium">X-Ray Report</p>
-                      <p className="text-xs text-muted-foreground">
-                        Uploaded: Mar 28, 2023
-                      </p>
-                    </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => router.push('/doctors')}
+                  >
+                    View All
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {doctors.map((doctor) => (
+                      <div
+                        key={doctor.uid}
+                        className="flex items-center justify-between border-b border-border/50 pb-4 last:border-0"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="size-10 rounded-full bg-accent/10 flex items-center justify-center text-accent">
+                            {doctor.userInfo?.fullName.charAt(0) || 'D'}
+                          </div>
+                          <div>
+                            <p className="font-medium">
+                              {doctor.userInfo?.fullName}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {doctor.specializations.join(', ')}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => router.push(`/doctors/${doctor.uid}`)}
+                        >
+                          View Profile
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-              </CardContent>
-              <CardFooter className="border-t bg-secondary/10 flex justify-center">
-                <Button variant="ghost" className="w-full">
-                  <FileText className="mr-2 h-4 w-4" />
-                  View All Records
-                </Button>
-              </CardFooter>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
-          {/* Right Sidebar */}
-          <div className="space-y-6">
+          {/* Notifications Section */}
+          <div>
             <Card>
-              <CardHeader>
-                <CardTitle>Notifications</CardTitle>
-                <CardDescription>
-                  Your recent alerts and messages
-                </CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Recent Notifications</CardTitle>
+                  <CardDescription>
+                    Stay updated on your health appointments
+                  </CardDescription>
+                </div>
+                <Button variant="ghost" size="sm">
+                  Mark All Read
+                </Button>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {recentNotifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className="flex gap-3 items-start border-b border-border/50 pb-4 last:border-0"
-                    >
+                {recentNotifications.length > 0 ? (
+                  <div className="space-y-4">
+                    {recentNotifications.map((notification) => (
                       <div
-                        className={`size-8 rounded-full flex-shrink-0 flex items-center justify-center mt-0.5 ${
-                          notification.type === 'reminder'
-                            ? 'bg-primary/10 text-primary'
-                            : 'bg-accent/10 text-accent'
-                        }`}
+                        key={notification.id}
+                        className="flex gap-4 border-b border-border/50 pb-4 last:border-0"
                       >
-                        {notification.type === 'reminder' ? (
-                          <BellRing className="size-4" />
-                        ) : (
-                          <AlertCircle className="size-4" />
-                        )}
+                        <div
+                          className={`size-10 rounded-full flex-shrink-0 flex items-center justify-center ${
+                            notification.type === 'reminder'
+                              ? 'bg-primary/10 text-primary'
+                              : 'bg-accent/10 text-accent'
+                          }`}
+                        >
+                          {notification.type === 'reminder' ? (
+                            <Clock className="h-5 w-5" />
+                          ) : (
+                            <AlertCircle className="h-5 w-5" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium">{notification.title}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {notification.time}
+                            </p>
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {notification.message}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-sm">
-                          {notification.title}
-                        </p>
-                        <p className="text-xs text-muted-foreground mb-1">
-                          {notification.message}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {notification.time}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-              <CardFooter className="border-t bg-secondary/10 flex justify-center">
-                <Button variant="ghost" className="w-full">
-                  View All Notifications
-                </Button>
-              </CardFooter>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() => router.push('/appointments')}
-                >
-                  <CalendarDays className="mr-2 h-4 w-4" />
-                  Book Appointment
-                </Button>
-                <Button variant="outline" className="w-full justify-start">
-                  <MessageSquare className="mr-2 h-4 w-4" />
-                  Message Doctor
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() => router.push('/profile')}
-                >
-                  <User className="mr-2 h-4 w-4" />
-                  Update Profile
-                </Button>
-                <Button variant="outline" className="w-full justify-start">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Account Settings
-                </Button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-8 text-center">
+                    <p className="text-muted-foreground">
+                      No recent notifications
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

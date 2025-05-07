@@ -22,9 +22,11 @@ service cloud.firestore {
       // Allow authenticated users to UPDATE their own profile,
       // but prevent them from changing their UID, email, userType, or status directly.
       // EXCEPT for Admin activation where they can change their status from Inactive to Active
-      allow update: if request.auth != null && request.auth.uid == userId && (
+      // OR Admin/Staff can update any doctor's status
+      allow update: if request.auth != null && (
                        // Regular profile updates (no status change)
-                       (request.resource.data.uid == request.auth.uid &&
+                       (request.auth.uid == userId && 
+                       request.resource.data.uid == request.auth.uid &&
                        request.resource.data.email == resource.data.email &&
                        request.resource.data.userType == resource.data.userType &&
                        request.resource.data.status == resource.data.status)
@@ -32,38 +34,60 @@ service cloud.firestore {
                        || 
                        
                        // Special case for Admin activation
-                       (request.resource.data.uid == request.auth.uid &&
+                       (request.auth.uid == userId &&
+                       request.resource.data.uid == request.auth.uid &&
                        request.resource.data.email == resource.data.email &&
                        request.resource.data.userType == resource.data.userType &&
                        request.resource.data.userType == 'Admin' &&
                        resource.data.status == 'Inactive' &&
                        request.resource.data.status == 'Active')
+
+                       ||
+
+                       // Admin/Staff can update any doctor's status
+                       (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userType in ['Admin', 'Staff'] &&
+                       resource.data.userType == 'Doctor' &&
+                       request.resource.data.uid == resource.data.uid &&
+                       request.resource.data.email == resource.data.email &&
+                       request.resource.data.userType == resource.data.userType)
                     );
 
        // Disallow direct deletion for now (can be done by Admins or Cloud Functions if needed)
       allow delete: if false;
     }
     
-    // Rules for other collections
+    // Rules for doctor profiles
     match /doctors/{doctorId} {
       // Allow CREATE for a doctor profile IF:
       // 1. The document ID matches the UID in the data.
       // 2. The user document for this UID exists and has userType 'Doctor'.
       // 3. The initial profileStatus is 'Pending'.
-      allow create: if request.resource.data.uid == doctorId &&
+      // OR Admin/Staff can create doctor profiles for existing doctors
+      allow create: if request.auth != null && (
+                       (request.resource.data.uid == doctorId &&
                        exists(/databases/$(database)/documents/users/$(doctorId)) &&
                        get(/databases/$(database)/documents/users/$(doctorId)).data.userType == 'Doctor' &&
-                       request.resource.data.profileStatus == 'Pending' &&
-                       request.resource.data.createdAt == request.time;
+                       request.resource.data.profileStatus == 'Pending')
+
+                       ||
+
+                       (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userType in ['Admin', 'Staff'] &&
+                       request.resource.data.uid == doctorId &&
+                       exists(/databases/$(database)/documents/users/$(doctorId)) &&
+                       get(/databases/$(database)/documents/users/$(doctorId)).data.userType == 'Doctor')
+                    );
 
       // Allow authenticated users to READ doctor profiles.
       allow read: if request.auth != null;
 
-      // Allow the doctor themselves OR an Admin to UPDATE the profile.
+      // Allow the doctor themselves OR an Admin/Staff to UPDATE the profile.
       // Prevent changing the UID.
-      allow update: if request.auth != null &&
-                       (request.auth.uid == doctorId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userType == 'Admin') &&
-                       request.resource.data.uid == doctorId;
+      allow update: if request.auth != null && (
+                       (request.auth.uid == doctorId && request.resource.data.uid == doctorId)
+                       ||
+                       (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userType in ['Admin', 'Staff'] && 
+                       request.resource.data.uid == doctorId)
+                    );
 
       // Disallow direct deletion for now
       allow delete: if false;

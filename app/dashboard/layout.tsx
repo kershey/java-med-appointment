@@ -5,29 +5,33 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { logoutUser } from '@/app/firebase/auth';
 import {
   CalendarDays,
   Users,
   Home,
   User,
   Settings,
-  LogOut,
-  Menu,
   X,
-  Bell,
   HeartPulse,
-  Mail,
-  Search,
+  LogOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { logoutUser } from '@/app/firebase/auth';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { user, userRole, loading } = useAuth();
+  const { user, userRole, loading, userData } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -63,16 +67,22 @@ export default function DashboardLayout({
       sessionStorage.removeItem('redirectToStaffDashboard');
       // No need to redirect, component should be visible now
     }
-  }, [user, loading, router, pathname]);
+  }, [user, loading, router, pathname, userRole]);
 
-  // Handle logout
   const handleLogout = async () => {
-    try {
-      await logoutUser();
-      router.push('/');
-    } catch (error) {
-      console.error('Logout failed:', error);
-    }
+    await logoutUser();
+    const redirectPath =
+      userRole?.toLowerCase() === 'patient'
+        ? '/auth/login/patient'
+        : userRole?.toLowerCase() === 'doctor'
+        ? '/auth/login/doctor'
+        : userRole?.toLowerCase() === 'staff'
+        ? '/auth/login/staff'
+        : userRole?.toLowerCase() === 'admin'
+        ? '/auth/login/admin'
+        : '/auth/login';
+
+    router.push(redirectPath);
   };
 
   // Loading state
@@ -102,20 +112,46 @@ export default function DashboardLayout({
       href: '/appointments',
       icon: CalendarDays,
     },
-    {
+  ];
+
+  // Role-specific links
+  if (userRole === 'Doctor') {
+    navLinks.push({
+      name: 'My Profile',
+      href: '/dashboard/doctor/profile',
+      icon: User,
+    });
+  } else {
+    // For other roles (Patient, Staff, Admin)
+    navLinks.push({
       name: 'Profile',
       href: '/profile',
       icon: User,
-    },
-  ];
+    });
+  }
 
   // Additional links based on user role
-  if (userRole === 'Doctor' || userRole === 'Staff' || userRole === 'Admin') {
+  if (userRole === 'Staff') {
     navLinks.push({
-      name: 'Patients',
-      href: '/patients',
+      name: 'User Management',
+      href: '/dashboard/staff/users',
       icon: Users,
     });
+  }
+
+  if (userRole === 'Admin') {
+    navLinks.push(
+      {
+        name: 'User Management',
+        href: '/dashboard/admin/users',
+        icon: Users,
+      },
+      {
+        name: 'Doctor Management',
+        href: '/dashboard/admin/doctors',
+        icon: HeartPulse,
+      }
+    );
   }
 
   if (userRole === 'Admin') {
@@ -163,85 +199,75 @@ export default function DashboardLayout({
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
               >
-                <link.icon
-                  className={`mr-3 h-5 w-5 ${
-                    pathname === link.href
-                      ? 'text-primary'
-                      : 'text-muted-foreground group-hover:text-foreground'
-                  }`}
-                />
+                {link.icon && <link.icon className="mr-3 h-5 w-5" />}
                 {link.name}
               </Link>
             ))}
           </nav>
 
-          {/* User Profile */}
-          <div className="p-4 border-t border-border/60">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                {user?.email?.charAt(0).toUpperCase() || 'U'}
-              </div>
-              <div className="overflow-hidden">
-                <p className="font-medium truncate">
-                  {user?.displayName || user?.email?.split('@')[0] || 'User'}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {userRole || 'User'}
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full justify-start"
-              onClick={handleLogout}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Log Out
-            </Button>
+          {/* User Profile Dropdown */}
+          <div className="mt-auto px-3 py-4 border-t border-border/60">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors outline-none">
+                  <div className="size-10 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0 font-medium">
+                    {userData?.firstName?.charAt(0)?.toUpperCase() ||
+                      user?.email?.charAt(0)?.toUpperCase() ||
+                      'U'}
+                  </div>
+                  <div className="overflow-hidden text-left flex-1">
+                    <p className="text-sm font-medium truncate">
+                      {userData?.firstName
+                        ? `${userData.firstName} ${userData.lastName || ''}`
+                        : user?.email || 'User'}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {user?.email || ''}
+                    </p>
+                  </div>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  My Account
+                  {userRole && (
+                    <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                      {userRole}
+                    </span>
+                  )}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link
+                    href={
+                      userRole === 'Doctor'
+                        ? '/dashboard/doctor/profile'
+                        : '/profile'
+                    }
+                  >
+                    <User className="mr-2 h-4 w-4" />
+                    <span>Profile</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/appointments">
+                    <CalendarDays className="mr-2 h-4 w-4" />
+                    <span>Appointments</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={handleLogout}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Logout</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Navigation */}
-        <header className="h-16 border-b border-border/60 px-4 flex items-center justify-between sticky top-0 bg-background/80 backdrop-blur-sm z-10">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="lg:hidden"
-              onClick={() => setIsSidebarOpen(true)}
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-            <div className="relative rounded-md w-64 md:w-80 hidden md:block">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <input
-                type="search"
-                placeholder="Search..."
-                className="w-full py-2 pl-9 pr-4 bg-muted/50 rounded-md border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1 right-1 size-2 bg-primary rounded-full"></span>
-            </Button>
-            <Button variant="ghost" size="icon">
-              <Mail className="h-5 w-5" />
-            </Button>
-          </div>
-        </header>
-
-        {/* Page Content */}
-        <main className="flex-1 p-4 md:p-6 max-w-7xl w-full mx-auto">
-          {children}
-        </main>
-      </div>
+      {/* Main content */}
+      <main className="flex-1 p-4 space-y-4">{children}</main>
     </div>
   );
 }

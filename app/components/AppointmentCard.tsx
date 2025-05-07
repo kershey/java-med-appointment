@@ -36,6 +36,10 @@ export function AppointmentCard({
   onReschedule,
   isPast,
 }: AppointmentCardProps) {
+  if (!appointment) {
+    return null;
+  }
+
   const { id, doctorName, doctorSpecialty, date, time, location, status } =
     appointment;
   const isPastAppointment = isPast || (isDatePast(date) && !isToday(date));

@@ -110,7 +110,7 @@ export default function LoginOptionsPage() {
 
         <CardFooter className="pb-6 flex justify-center border-t pt-6 bg-secondary/5">
           <p className="text-sm text-muted-foreground">
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <Link
               href="/auth/register"
               className="text-primary hover:underline font-medium"
