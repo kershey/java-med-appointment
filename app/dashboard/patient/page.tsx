@@ -10,7 +10,10 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import Link from 'next/link';
 import {
   Calendar,
@@ -22,24 +25,47 @@ import {
   CheckCircle2,
   User,
   FileHeart,
+  Clock,
+  CalendarDays,
+  MapPin,
+  Loader2,
+  XCircle,
+  AlertCircle,
 } from 'lucide-react';
 import {
   getUpcomingPatientAppointments,
   getPastPatientAppointments,
   cancelAppointment,
   UIAppointment,
+  getAppointmentsWithDetails,
 } from '@/app/firebase/appointments';
+import { format } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { toast } from '@/hooks/use-toast';
+import { getDoctorById } from '@/app/firebase/doctors';
 
 export default function PatientDashboardPage() {
   const { user, userData } = useAuth();
-  const [showUpcoming, setShowUpcoming] = useState(true);
+  const [activeTab, setActiveTab] = useState<string>('upcoming');
   const [upcomingAppointments, setUpcomingAppointments] = useState<
     UIAppointment[]
   >([]);
   const [pastAppointments, setPastAppointments] = useState<UIAppointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState<string | null>(null);
 
-  // Fetch appointment data
+  // Fetch appointment data with additional doctor information
   useEffect(() => {
     const fetchAppointments = async () => {
       if (!user) return;
@@ -47,16 +73,37 @@ export default function PatientDashboardPage() {
       try {
         setLoading(true);
 
-        // Fetch upcoming appointments
-        const upcomingResult = await getUpcomingPatientAppointments(user.uid);
-        if (upcomingResult.success && upcomingResult.appointments) {
-          setUpcomingAppointments(upcomingResult.appointments);
-        }
+        // Fetch appointments with doctor details
+        const appointmentsResult = await getAppointmentsWithDetails(
+          user.uid,
+          'Patient'
+        );
 
-        // Fetch past appointments
-        const pastResult = await getPastPatientAppointments(user.uid);
-        if (pastResult.success && pastResult.appointments) {
-          setPastAppointments(pastResult.appointments);
+        if (appointmentsResult.success && appointmentsResult.appointments) {
+          // Separate upcoming and past appointments
+          const now = new Date();
+          const upcoming: UIAppointment[] = [];
+          const past: UIAppointment[] = [];
+
+          appointmentsResult.appointments.forEach((appointment) => {
+            if (
+              appointment.date > now ||
+              appointment.status === 'Pending' ||
+              appointment.status === 'Approved'
+            ) {
+              upcoming.push(appointment);
+            } else {
+              past.push(appointment);
+            }
+          });
+
+          // Sort upcoming by date
+          upcoming.sort((a, b) => a.date.getTime() - b.date.getTime());
+          // Sort past by date descending
+          past.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+          setUpcomingAppointments(upcoming);
+          setPastAppointments(past);
         }
       } catch (error) {
         console.error('Error fetching appointments:', error);
@@ -71,44 +118,54 @@ export default function PatientDashboardPage() {
   // Handle appointment cancellation
   const handleCancelAppointment = async (id: string) => {
     try {
+      setCancelling(id);
       const result = await cancelAppointment(id, 'Cancelled by patient');
 
       if (result.success) {
-        // Refresh the appointment data
-        if (user) {
-          const upcomingResult = await getUpcomingPatientAppointments(user.uid);
-          if (upcomingResult.success && upcomingResult.appointments) {
-            setUpcomingAppointments(upcomingResult.appointments);
-          }
-        }
+        toast({
+          title: 'Appointment Cancelled',
+          description: 'Your appointment has been successfully cancelled.',
+        });
+
+        // Remove the cancelled appointment from the list
+        setUpcomingAppointments((prev) =>
+          prev.map((app) =>
+            app.id === id ? { ...app, status: 'Cancelled' } : app
+          )
+        );
       } else {
+        toast({
+          title: 'Error',
+          description: 'Failed to cancel appointment. Please try again.',
+          variant: 'destructive',
+        });
         console.error('Error cancelling appointment:', result.error);
       }
     } catch (error) {
       console.error('Error in handleCancelAppointment:', error);
+      toast({
+        title: 'Error',
+        description: 'An unexpected error occurred. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setCancelling(null);
     }
   };
 
-  // Handle appointment rescheduling
-  const handleRescheduleAppointment = (id: string) => {
-    console.log(`Rescheduling appointment with ID: ${id}`);
-    // Implementation would navigate to rescheduling page
-  };
-
-  const transformStatusForCard = (
-    status: string
-  ): 'confirmed' | 'pending' | 'canceled' | 'completed' => {
-    switch (status.toLowerCase()) {
-      case 'confirmed':
-        return 'confirmed';
-      case 'pending':
-        return 'pending';
-      case 'canceled':
-        return 'canceled';
-      case 'completed':
-        return 'completed';
+  // Get status badge color
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case 'Approved':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'Pending':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'Cancelled':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'Completed':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
       default:
-        return 'pending';
+        return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
@@ -154,7 +211,11 @@ export default function PatientDashboardPage() {
           <CardContent>
             <div className="flex items-baseline justify-between">
               <div className="text-3xl font-bold">
-                {upcomingAppointments.length}
+                {
+                  upcomingAppointments.filter(
+                    (app) => app.status !== 'Cancelled'
+                  ).length
+                }
               </div>
               <Calendar className="h-5 w-5 text-primary" />
             </div>
@@ -249,83 +310,252 @@ export default function PatientDashboardPage() {
         </div>
       </section>
 
-      {/* Appointments */}
+      {/* Appointments Section */}
       <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-medium">My Appointments</h2>
-          <div className="flex gap-2">
-            <Button
-              variant={showUpcoming ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setShowUpcoming(true)}
-            >
-              Upcoming
-            </Button>
-            <Button
-              variant={!showUpcoming ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setShowUpcoming(false)}
-            >
-              Past
-            </Button>
-          </div>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-medium">Your Appointments</h2>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/appointments">
+              View All
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
         </div>
 
-        {loading ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="size-16 border-t-4 border-primary border-solid rounded-full animate-spin mx-auto"></div>
-            <p className="ml-4">Loading appointments...</p>
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {showUpcoming ? (
-              upcomingAppointments.length === 0 ? (
-                <div className="md:col-span-2 text-center p-8 border border-dashed rounded-lg">
-                  <p className="text-muted-foreground">
-                    You don&apos;t have any upcoming appointments.
-                  </p>
-                  <Button asChild className="mt-4">
-                    <Link href="/appointments/new">
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      Book New Appointment
-                    </Link>
-                  </Button>
-                </div>
-              ) : (
-                upcomingAppointments.map((appointment) => (
-                  <AppointmentCard
-                    key={appointment.id}
-                    appointment={{
-                      ...appointment,
-                      status: transformStatusForCard(appointment.status),
-                    }}
-                    onCancel={() => handleCancelAppointment(appointment.id)}
-                    onReschedule={() =>
-                      handleRescheduleAppointment(appointment.id)
-                    }
-                  />
-                ))
-              )
-            ) : pastAppointments.length === 0 ? (
-              <div className="md:col-span-2 text-center p-8 border border-dashed rounded-lg">
-                <p className="text-muted-foreground">
-                  You don&apos;t have any past appointments.
-                </p>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="mb-6">
+            <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
+            <TabsTrigger value="past">Past</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="upcoming" className="space-y-4">
+            {loading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
+            ) : upcomingAppointments.filter((app) => app.status !== 'Cancelled')
+                .length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">
+                    No Upcoming Appointments
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
+                    You don't have any upcoming appointments scheduled. Would
+                    you like to book one now?
+                  </p>
+                  <Button asChild>
+                    <Link href="/appointments/new">Book an Appointment</Link>
+                  </Button>
+                </CardContent>
+              </Card>
             ) : (
-              pastAppointments.map((appointment) => (
-                <AppointmentCard
-                  key={appointment.id}
-                  appointment={{
-                    ...appointment,
-                    status: transformStatusForCard(appointment.status),
-                  }}
-                  isPast={true}
-                />
-              ))
+              <div className="grid gap-4">
+                {upcomingAppointments
+                  .filter((app) => app.status !== 'Cancelled')
+                  .slice(0, 5)
+                  .map((appointment) => (
+                    <Card key={appointment.id} className="overflow-hidden">
+                      <div className="flex flex-col md:flex-row">
+                        <div className="bg-muted p-6 md:w-48 flex flex-col justify-center items-center border-b md:border-b-0 md:border-r">
+                          <CalendarDays className="h-8 w-8 text-primary mb-2" />
+                          <p className="text-lg font-medium text-center">
+                            {format(appointment.date, 'MMM d')}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {format(appointment.date, 'EEEE, yyyy')}
+                          </p>
+                          <div className="mt-2 flex items-center justify-center">
+                            <Clock className="h-4 w-4 text-muted-foreground mr-1" />
+                            <span className="text-sm">{appointment.time}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 p-6">
+                          <div className="flex justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <Avatar>
+                                <AvatarFallback>
+                                  {appointment.doctorName.charAt(0)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <h3 className="font-medium">
+                                  {appointment.doctorName}
+                                </h3>
+                                <p className="text-sm text-muted-foreground">
+                                  {appointment.doctorSpecialty}
+                                </p>
+                              </div>
+                            </div>
+                            <div>
+                              <div
+                                className={`text-xs px-2.5 py-0.5 rounded-full border ${getStatusBadgeColor(
+                                  appointment.status
+                                )}`}
+                              >
+                                {appointment.status}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-3 mb-4">
+                            <div className="flex-shrink-0 rounded-full bg-primary/10 p-2">
+                              <MapPin className="h-4 w-4 text-primary" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">
+                                {appointment.virtualAvailable
+                                  ? 'Video Consultation'
+                                  : 'In-Person Visit'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {appointment.location}
+                              </p>
+                            </div>
+                          </div>
+
+                          {appointment.status === 'Approved' &&
+                            appointment.queueNumber && (
+                              <div className="bg-accent/20 p-3 rounded border border-accent/30 mb-4">
+                                <p className="text-sm font-medium">
+                                  Queue Number:{' '}
+                                  <span className="text-accent font-bold">
+                                    {appointment.queueNumber}
+                                  </span>
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Your assigned queue number for this
+                                  appointment
+                                </p>
+                              </div>
+                            )}
+
+                          <div className="flex gap-2 mt-4">
+                            <Button size="sm" asChild>
+                              <Link href={`/appointments/${appointment.id}`}>
+                                View Details
+                              </Link>
+                            </Button>
+
+                            {appointment.status !== 'Completed' && (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button size="sm" variant="outline">
+                                    {cancelling === appointment.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    ) : (
+                                      <XCircle className="h-4 w-4 mr-2" />
+                                    )}
+                                    Cancel
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                      Cancel Appointment
+                                    </AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to cancel this
+                                      appointment? This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>
+                                      Keep Appointment
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() =>
+                                        handleCancelAppointment(appointment.id)
+                                      }
+                                    >
+                                      Yes, Cancel Appointment
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+              </div>
             )}
-          </div>
-        )}
+          </TabsContent>
+
+          <TabsContent value="past">
+            {loading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : pastAppointments.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">
+                    No Past Appointments
+                  </h3>
+                  <p className="text-sm text-muted-foreground text-center max-w-md">
+                    You don't have any past appointments in our records.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4">
+                {pastAppointments.slice(0, 5).map((appointment) => (
+                  <Card key={appointment.id}>
+                    <CardHeader className="pb-2">
+                      <div className="flex justify-between">
+                        <div>
+                          <CardTitle>{appointment.doctorName}</CardTitle>
+                          <CardDescription>
+                            {appointment.doctorSpecialty}
+                          </CardDescription>
+                        </div>
+                        <div
+                          className={`text-xs px-2.5 py-0.5 h-fit rounded-full border ${getStatusBadgeColor(
+                            appointment.status
+                          )}`}
+                        >
+                          {appointment.status}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pb-3">
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        <div className="flex items-center">
+                          <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
+                          <span>{format(appointment.date, 'MMM d, yyyy')}</span>
+                        </div>
+                        <div className="flex items-center">
+                          <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
+                          <span>{appointment.time}</span>
+                        </div>
+                        <div className="flex items-center">
+                          <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
+                          <span>
+                            {appointment.virtualAvailable
+                              ? 'Video Consultation'
+                              : 'In-Person Visit'}
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                    <CardFooter>
+                      <Button size="sm" variant="outline" asChild>
+                        <Link href={`/appointments/${appointment.id}`}>
+                          View Details
+                        </Link>
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </section>
     </div>
   );

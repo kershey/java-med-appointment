@@ -27,6 +27,7 @@ export interface User {
 // Doctor specific profile
 export interface DoctorProfile {
   uid: string;
+  fullName?: string;
   specializations: string[];
   clinicAddress: string;
   schedule: {

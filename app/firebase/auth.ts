@@ -87,6 +87,7 @@ export const registerUser = async ({
     if (userType === 'Doctor') {
       await setDoc(doc(db, 'doctors', user.uid), {
         uid: user.uid,
+        fullName: fullName,
         specializations: [],
         clinicAddress: '',
         schedule: {},

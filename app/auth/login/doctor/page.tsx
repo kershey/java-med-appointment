@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { z } from 'zod';
@@ -36,6 +36,7 @@ import {
 
 import { loginUser } from '@/app/firebase/auth';
 import { DoctorApprovalPending } from '@/components/DoctorApprovalPending';
+import { useAuth } from '@/app/contexts/AuthContext';
 
 // Define form schema
 const formSchema = z.object({
@@ -47,9 +48,20 @@ const formSchema = z.object({
 
 export default function DoctorLoginPage() {
   const router = useRouter();
+  const { user, userRole, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
+
+  // Auto-redirect if already logged in
+  useEffect(() => {
+    if (!loading && user && userRole === 'Doctor') {
+      console.log(
+        '[DoctorLoginPage] Doctor already logged in, redirecting to dashboard'
+      );
+      router.push('/dashboard/doctor');
+    }
+  }, [user, userRole, loading, router]);
 
   // Initialize form
   const form = useForm<z.infer<typeof formSchema>>({

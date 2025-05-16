@@ -33,6 +33,7 @@ export interface UIAppointment {
   aiPreDiagnosis?: boolean;
   preparationSteps?: string[];
   estimatedWaitTime?: string;
+  queueNumber?: number;
 }
 
 // Get appointments for a patient
